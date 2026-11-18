@@ -1,105 +1,79 @@
-// Staged scenes for real screenshots (?shot=cover|foot|mission|start).
-// Each one drives the real game into a state that shows its systems at their best,
-// then the screenshot is taken from the live render — nothing is faked.
-export function stageShot(name, game) {
-  const g = game;
-  if (name === 'start') {
-    g.state = 'menu';
-    g.showStartMenu();
-    return;
-  }
-  g.hideMenus();
-  g.state = 'playing';
-  g.elapsed = 3600; // 13:00, golden afternoon light in the HUD clock
-  g.stagedDrive = false;
-  const p = g.player;
+// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
+// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
+// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
+// is what a short game really looks like and the same seed always gives the same frame.
+import { FIELD, PLAYER, STEP } from './config.js';
+import { EVENT_OVER, KIND_BLOCK } from './world.js';
+import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 
-  if (name === 'cover') {
-    // Police chase: Rico driving north through downtown, 3 stars, SBPD on his tail,
-    // mission 2 (the Pier Drop) active with a package marker ahead.
-    g.missions.startMission(1);
-    g.cash = 1240;
-    g.stagedDrive = true;
-    const car = g.parkedCars[0];
-    g.enterCar(car, true);
-    car.pos.set(0, 0, 62);
-    car.heading = Math.PI; // north, into the city
-    car.speed = 22;
-    p.camYaw = Math.PI;
-    p.camPitch = 0.24;
-    p.camDist = 12;
-    g.police.setHeat(55); // 3 stars
-    g.police.update(0.01, g); // spawn the pursuit units
-    g.police.cars.forEach((c, i) => {
-      // behind the player car but clear of the chase camera
-      c.pos.set((i % 2 === 0 ? -4.5 : 4.5), 0, 62 + 24 + i * 10);
-      c.heading = Math.PI;
-      c.speed = 22;
-      c.syncMesh();
-    });
-    // one SBPD unit comes at the player head-on, down the same avenue
-    if (g.police.cars[0]) {
-      const lead = g.police.cars[0];
-      lead.pos.set(-4, 0, 62 - 75);
-      lead.heading = 0;
-      lead.speed = 20;
-      lead.syncMesh();
+const START_SECONDS = 5;
+const PLAY_SECONDS = 26;
+const END_LIMIT_SECONDS = 600;
+/**
+ * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
+ * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
+ * caught out once the blocks speed up, as a hurried player is.
+ */
+const HORIZON_PLAY = 0.7;
+const HORIZON_END = 0.25;
+const SAMPLE = 1 / 30;
+const DIRECTIONS = [0, -1, 1];
+/** Extra room, each side, it keeps between the paddle and a block. */
+const MARGIN = 10;
+
+/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
+function timeToHit(state, direction, horizon) {
+  const player = state.player;
+  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
+    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
+    for (let index = 0; index < state.items.length; index += 1) {
+      const item = state.items[index];
+      if (!item.active || item.kind !== KIND_BLOCK) continue;
+      const y = item.y + item.speed * t;
+      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
     }
-    // the mission banner has served its purpose in the staged shot
-    g.hud.msgTimer = 0; g.hud.msgEl.textContent = ''; g.hud.subEl.textContent = '';
-    // traffic ahead for depth
-    g.trafficCars.slice(0, 3).forEach((c, i) => {
-      c.pos.set(i === 0 ? -4 : 4, 0, 62 - 34 - i * 12);
-      c.heading = Math.PI;
-      c.speed = 10;
-      c.syncMesh();
-    });
-  } else if (name === 'foot') {
-    // On foot downtown by Palm Court Park: pedestrians, traffic, garage marker.
-    g.missions.startMission(0);
-    g.cash = 120;
-    p.pos.set(-31, 0, 8);
-    p.heading = Math.PI * 0.15;
-    p.camYaw = Math.PI * 0.9;
-    p.camPitch = 0.3;
-    p.camDist = 9;
-    g.peds.slice(0, 6).forEach((ped, i) => {
-      ped.pos.set(-31 + (i - 3) * 7, 0, 8 + (i % 2 ? 22 : -20));
-      ped.heading = i % 2 ? 0 : Math.PI;
-    });
-    g.trafficCars.slice(0, 4).forEach((c, i) => {
-      c.pos.set(-62 + i * 2, 0, 31 - 30 + i * 16);
-      c.axis = 'z'; c.dir = 1; c.heading = 0; c.speed = 9;
-      c.syncMesh();
-    });
-    g.hud.msgTimer = 0; g.hud.msgEl.textContent = ''; g.hud.subEl.textContent = '';
-  } else if (name === 'mission') {
-    // The Pier Drop pickup: Rico on foot at the Marina Plaza package, the yellow
-    // marker beam above it, traffic and the city behind him.
-    g.missions.startMission(1);
-    g.cash = 890;
-    p.pos.set(112, 0, 78);
-    p.heading = 2.5; // facing the package at the intersection ahead
-    p.camYaw = Math.PI - 0.25;
-    p.camPitch = 0.38;
-    p.camDist = 11;
-    g.peds.slice(0, 5).forEach((ped, i) => {
-      ped.pos.set(112 + (i - 2) * 7, 0, 78 + (i % 2 ? 20 : -18));
-      ped.heading = i % 2 ? 0 : Math.PI;
-    });
-    g.trafficCars.slice(0, 3).forEach((c, i) => {
-      c.pos.set(62 - 44 + i * 22, 0, 58 + i * 2);
-      c.axis = 'x'; c.dir = 1; c.heading = Math.PI / 2; c.speed = 9;
-      c.syncMesh();
-    });
-    g.police.setHeat(12); // 1 star, one unit in the distance
-    g.police.update(0.01, g);
-    if (g.police.cars[0]) {
-      g.police.cars[0].pos.set(130, 0, 14);
-      g.police.cars[0].heading = 0;
-      g.police.cars[0].speed = 12;
-      g.police.cars[0].syncMesh();
-    }
-    g.hud.msgTimer = 0; g.hud.msgEl.textContent = ''; g.hud.subEl.textContent = '';
   }
+  return Infinity;
+}
+
+/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
+function autopilot(state, horizon) {
+  const player = state.player;
+  let coin = null;
+  for (let index = 0; index < state.items.length; index += 1) {
+    const item = state.items[index];
+    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+  }
+  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
+  const centre = player.x + player.width / 2;
+  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
+  let best = wanted;
+  let bestTime = timeToHit(state, wanted, horizon);
+  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
+    const time = timeToHit(state, DIRECTIONS[index], horizon);
+    if (time > bestTime) {
+      bestTime = time;
+      best = DIRECTIONS[index];
+    }
+  }
+  return best;
+}
+
+/**
+ * Set `world` to the named scene (start, play or end; any other name is start) and return the
+ * screen to draw over it and the best score to show.
+ */
+export function stageShot(name, world) {
+  world.reset();
+  if (name !== 'play' && name !== 'end') {
+    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
+    return { screen: SCREEN_TITLE, best: 0 };
+  }
+  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
+  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
+  for (let index = 0; index < limit / STEP; index += 1) {
+    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
+  }
+  const over = world.state.lives === 0;
+  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
 }

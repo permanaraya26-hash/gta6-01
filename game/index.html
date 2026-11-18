@@ -3,124 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Bay — Open World Crime Story</title>
-<link rel="icon" href="data:,">
+<title>Block Dodger</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1e2e; font-family: "Segoe UI", Verdana, sans-serif; }
-  #app { position: fixed; inset: 0; }
-  canvas.webgl { display: block; width: 100%; height: 100%; }
-  .hidden { display: none !important; }
-  /* ---------- HUD ---------- */
-  #hud { position: absolute; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
-  #topLeft { position: absolute; top: 14px; left: 16px; }
-  #cash { font-size: 26px; font-weight: 800; color: #7dff9a; letter-spacing: 1px; }
-  #cash small { color: #cfe8d4; font-size: 14px; font-weight: 600; }
-  #healthWrap { margin-top: 6px; width: 220px; height: 14px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 7px; overflow: hidden; }
-  #healthBar { height: 100%; width: 100%; background: linear-gradient(90deg,#ff5a4e,#ff8a5c); }
-  #armorWrap { margin-top: 4px; width: 220px; height: 8px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; overflow: hidden; }
-  #armorBar { height: 100%; width: 0%; background: linear-gradient(90deg,#4ec9ff,#9be8ff); }
-  #topRight { position: absolute; top: 12px; right: 18px; text-align: right; }
-  #stars { font-size: 30px; letter-spacing: 4px; color: #ffd23e; }
-  #stars .off { color: rgba(255,255,255,.28); }
-  #clock { font-size: 18px; font-weight: 700; margin-top: 2px; }
-  #dateLine { font-size: 12px; opacity: .85; }
-  #minimapBox { position: absolute; left: 16px; bottom: 16px; border: 2px solid rgba(255,255,255,.65); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.5); background: #0e2a3a; }
-  #minimap { display: block; }
-  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; max-width: 560px; }
-  #objectiveTitle { font-size: 19px; font-weight: 800; color: #ffe27a; }
-  #objectiveText { font-size: 14px; margin-top: 2px; }
-  #objectiveDist { font-size: 13px; color: #bfe9ff; margin-top: 2px; }
-  #message { position: absolute; bottom: 210px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #fff; text-align: center; }
-  #subMessage { position: absolute; bottom: 182px; left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe27a; text-align: center; }
-  #speedo { position: absolute; right: 18px; bottom: 16px; text-align: right; }
-  #speedVal { font-size: 40px; font-weight: 800; line-height: 1; }
-  #speedUnit { font-size: 13px; color: #cfe8d4; }
-  #carName { font-size: 14px; color: #ffe27a; margin-top: 2px; }
-  #hint { position: absolute; right: 18px; bottom: 110px; font-size: 12px; line-height: 1.6; text-align: right; opacity: .9; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; }
-  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
-  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
-  #crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
-  #ammo { position: absolute; right: 18px; bottom: 190px; font-size: 16px; font-weight: 700; text-align: right; }
-  #wasted { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: rgba(20,0,0,.45); }
-  #wasted h1 { font-size: 72px; letter-spacing: 10px; color: #ff3b30; margin: 0; }
-  #wasted p { font-size: 18px; }
-  /* ---------- Menus ---------- */
-  .menu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(180deg, rgba(6,26,44,.88), rgba(6,26,44,.72)); color: #fff; pointer-events: auto; z-index: 10; }
-  .menu h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd23e; text-shadow: 0 4px 0 #b3541e, 0 8px 24px rgba(0,0,0,.6); }
-  .menu h2 { font-size: 20px; margin: 6px 0 18px; font-weight: 600; color: #bfe9ff; letter-spacing: 2px; }
-  .menu .story { max-width: 620px; text-align: center; font-size: 15px; line-height: 1.6; color: #e8f4ff; margin-bottom: 22px; }
-  .menu button { pointer-events: auto; cursor: pointer; font-size: 18px; font-weight: 700; padding: 12px 34px; margin: 6px; border: 2px solid #ffd23e; border-radius: 8px; background: #ff7a1a; color: #fff; min-width: 280px; }
-  .menu button:hover { background: #ff8f3d; }
-  .menu button.secondary { background: transparent; border-color: #9be8ff; color: #bfe9ff; }
-  .menu .controls { margin-top: 20px; font-size: 13px; line-height: 1.9; color: #cfe8d4; text-align: center; }
-  .menu .controls b { color: #ffe27a; }
-  .menu .foot { margin-top: 18px; font-size: 12px; opacity: .7; }
-  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0b1e2e; color: #bfe9ff; font-size: 18px; z-index: 20; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  /* Read aloud, never shown: the status line screen readers announce. */
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
-</script>
 </head>
 <body>
-<div id="app"></div>
-
-<div id="loading">Loading Solmar Bay…</div>
-
-<div id="hud" class="hidden">
-  <div id="topLeft">
-    <div id="cash">$0 <small>SOLMAR BAY</small></div>
-    <div id="healthWrap"><div id="healthBar"></div></div>
-    <div id="armorWrap"><div id="armorBar"></div></div>
-  </div>
-  <div id="topRight">
-    <div id="stars"></div>
-    <div id="clock">12:00</div>
-    <div id="dateLine">TUE · SOLMAR BAY</div>
-  </div>
-  <div id="objective">
-    <div id="objectiveTitle"></div>
-    <div id="objectiveText"></div>
-    <div id="objectiveDist"></div>
-  </div>
-  <div id="message"></div>
-  <div id="subMessage"></div>
-  <div id="minimapBox"><canvas id="minimap" width="200" height="200"></canvas></div>
-  <div id="speedo" class="hidden"><div id="speedVal">0</div><div id="speedUnit">MPH</div><div id="carName"></div></div>
-  <div id="hint"></div>
-  <div id="ammo" class="hidden"></div>
-  <div id="crosshair" class="hidden"></div>
-  <div id="wasted" class="hidden"><h1 id="wastedTitle">WASTED</h1><p id="wastedText"></p></div>
-</div>
-
-<div id="startMenu" class="menu hidden">
-  <h1>SOLMAR BAY</h1>
-  <h2>AN OPEN-WORLD CRIME STORY</h2>
-  <div class="story">Rico Marlow came back to Solmar Bay with nothing but a stolen
-  sedan and a debt to the fixer Vera Cruz. Steal cars, outrun the Solmar Bay Police,
-  run Vera's jobs, and buy your way out — one score at a time.</div>
-  <button id="btnNew">NEW GAME</button>
-  <button id="btnContinue" class="secondary hidden">CONTINUE — <span id="continueInfo"></span></button>
-  <button id="btnHow" class="secondary">HOW TO PLAY</button>
-  <div id="howPanel" class="controls hidden">
-    <b>W A S D</b> move / drive &nbsp;·&nbsp; <b>Mouse drag</b> look &nbsp;·&nbsp; <b>Shift</b> sprint<br>
-    <b>E</b> enter / exit car &nbsp;·&nbsp; <b>Space</b> handbrake / jump<br>
-    <b>Left click</b> shoot pistol &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>R</b> reload<br>
-    <b>1 / 2</b> fists / pistol &nbsp;·&nbsp; <b>P</b> pause &nbsp;·&nbsp; <b>M</b> mute<br>
-    Steal cars, follow the yellow marker, lose the cops, get paid.
-  </div>
-  <div class="foot">A completely original game. No network needed — runs fully offline.</div>
-</div>
-
-<div id="pauseMenu" class="menu hidden">
-  <h1 style="font-size:44px">PAUSED</h1>
-  <button id="btnResume">RESUME</button>
-  <button id="btnSave" class="secondary">SAVE GAME</button>
-  <button id="btnRestart" class="secondary">RESTART STORY</button>
-  <button id="btnQuit" class="secondary">QUIT TO TITLE</button>
-  <div class="controls" id="pauseStats"></div>
-</div>
-
+<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
