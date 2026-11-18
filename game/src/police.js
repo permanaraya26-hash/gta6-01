@@ -1,30 +1,28 @@
-// SBPD — the Solmar Bay Police Department. Wanted-level pursuit units,
-// foot officers, and the BUSTED/WASTED pressure around them.
-// Written fresh for the repair slice: pursuit cars now steer with
-// separation and avoidance (units, traffic and the player car never pile
-// into one another when they converge), rams are on a cooldown, and foot
-// cops open fire at 3+ stars instead of only punching.
+// SBPD — the Solmar Bay Police Department, rewritten.
+// Wanted-level pursuit cars, foot officers, and the BUSTED pressure
+// that closes in around the player. Original code written for this entry.
 import * as THREE from 'three';
 import { clamp, angleLerp, mulberry32, randRange, pick, dist2d } from './util.js';
 import { ROAD_LINES } from './city.js';
 import { buildPersonMesh } from './people.js';
 
-// How many pursuit cars each wanted level fields.
-const UNITS_PER_STAR = [0, 1, 2, 3, 4, 5];
-const MAX_COPS = 4;
+// Pursuit cars fielded at each wanted level (index = stars).
+const CARS_PER_STAR = [0, 1, 2, 3, 4, 5];
+const MAX_FOOT_COPS = 4;
 const COP_SHIRT = 0x1d3a6e;
 const COP_PANTS = 0x141c26;
 
 export function createPolice(G) {
   const rng = mulberry32(G.seed + 303);
-  const units = [];   // pursuit cars (entries of G.vehicles.cars)
-  const cops = [];    // foot officers { pos, hp, group, ... }
-  let coolTimer = 0;  // time the player has been out of sight of every unit
+  const units = []; // pursuit cars (entries of G.vehicles.cars)
+  const cops = [];  // foot officers
+  let coolTimer = 0; // time the player has spent out of every unit's sight
   let sirenOn = false;
 
-  // --- spawning ---------------------------------------------------------
-  function roadSpawnPoint(nearX, nearZ, minDist) {
-    // Pick a road line and a spot along it, at least minDist from (nearX, nearZ).
+  // --- spawning ------------------------------------------------------
+
+  // A point on a road line, at least minDist from (nearX, nearZ).
+  function roadPoint(nearX, nearZ, minDist) {
     for (let attempt = 0; attempt < 12; attempt++) {
       const line = pick(rng, ROAD_LINES);
       const along = randRange(rng, -175, 175);
@@ -33,19 +31,18 @@ export function createPolice(G) {
       const z = horizontal ? line : along;
       if (dist2d(x, z, nearX, nearZ) >= minDist) return { x, z };
     }
-    // Fallback: shove out along +x from the player.
     return { x: clamp(nearX + minDist, -180, 180), z: clamp(nearZ, -180, 180) };
   }
 
   function spawnUnit() {
     const p = G.player;
     const anchor = p.car ? p.car.pos : p.pos;
-    const spot = roadSpawnPoint(anchor.x, anchor.z, 42);
+    const spot = roadPoint(anchor.x, anchor.z, 42);
     const car = G.vehicles.makeCar(spot.x, spot.z, randRange(rng, 0, Math.PI * 2), { police: true });
-    car.ramAt = -10;        // last ram time (G.time)
-    car.stuckAt = G.time;   // last time the unit made progress toward the player
+    car.ramAt = -10;      // last ram time (G.time)
+    car.stuckAt = G.time; // last time the unit closed on the player
     car.lastDist = Infinity;
-    car.bustTimer = 0;      // time spent hugging an on-foot player
+    car.bustTimer = 0;    // time spent hugging an on-foot player
     car.flashAt = rng() * 0.5;
     units.push(car);
     return car;
@@ -53,24 +50,30 @@ export function createPolice(G) {
 
   function spawnCop() {
     const p = G.player;
-    const a = randRange(rng, 0, Math.PI * 2);
-    const d = randRange(rng, 9, 16);
+    const angle = randRange(rng, 0, Math.PI * 2);
+    const dist = randRange(rng, 9, 16);
     const mesh = buildPersonMesh(COP_SHIRT, COP_PANTS, 0x8a5a3a);
-    // navy cap: flatten a dark sphere on the head
     const cap = new THREE.Mesh(
       new THREE.SphereGeometry(0.28, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: 0x0d1520 })
+      new THREE.MeshLambertMaterial({ color: 0x0d1520 }),
     );
     cap.position.y = 1.86;
     mesh.group.add(cap);
-    const x = clamp(p.pos.x + Math.cos(a) * d, -195, 230);
-    const z = clamp(p.pos.z + Math.sin(a) * d, -195, 195);
+    const x = clamp(p.pos.x + Math.cos(angle) * dist, -195, 230);
+    const z = clamp(p.pos.z + Math.sin(angle) * dist, -195, 195);
     mesh.group.position.set(x, 0, z);
     G.scene.add(mesh.group);
     const cop = {
-      mesh, group: mesh.group, pos: mesh.group.position,
-      angle: 0, hp: 100, walkPhase: randRange(rng, 0, 6),
-      punchAt: -10, shotAt: -10, bustTimer: 0, down: 0,
+      mesh,
+      group: mesh.group,
+      pos: mesh.group.position,
+      angle: 0,
+      hp: 100,
+      walkPhase: randRange(rng, 0, 6),
+      punchAt: -10,
+      shotAt: -10,
+      bustTimer: 0,
+      down: 0,
     };
     cops.push(cop);
     return cop;
@@ -92,23 +95,26 @@ export function createPolice(G) {
     while (units.length) removeUnit(units[0]);
     while (cops.length) removeCop(cops[0]);
     coolTimer = 0;
-    if (sirenOn) { G.audio.setSiren(false); sirenOn = false; }
+    if (sirenOn) {
+      G.audio.setSiren(false);
+      sirenOn = false;
+    }
   }
 
-  // --- steering helpers ---------------------------------------------------
-  // Repulsion from every other moving car, so converging units fan out
-  // instead of stacking on the same point.
-  function avoidanceVector(car, radius, strength) {
-    let ax = 0, az = 0;
-    const all = G.vehicles.cars;
-    for (let i = 0; i < all.length; i++) {
-      const other = all[i];
+  // --- steering helpers -----------------------------------------------
+
+  // Push away from every other moving car, so units converging on the
+  // player fan out instead of stacking on the same point.
+  function separation(car, radius, strength) {
+    let ax = 0;
+    let az = 0;
+    for (const other of G.vehicles.cars) {
       if (other === car || other.dead) continue;
       const dx = car.pos.x - other.pos.x;
       const dz = car.pos.z - other.pos.z;
       const d = Math.hypot(dx, dz);
       if (d > 0.01 && d < radius) {
-        const w = (radius - d) / radius * strength;
+        const w = ((radius - d) / radius) * strength;
         ax += (dx / d) * w;
         az += (dz / d) * w;
       }
@@ -116,13 +122,15 @@ export function createPolice(G) {
     return { x: ax, z: az };
   }
 
-  // Is a car directly ahead of `car` within `ahead` metres? Used to brake
-  // instead of rear-ending traffic or another unit.
-  function blockedAhead(car, ahead, halfWidth) {
-    const fx = Math.cos(car.angle), fz = -Math.sin(car.angle);
+  // Is a car directly ahead of `car` within `ahead` metres? Brake instead
+  // of rear-ending traffic or another unit.
+  function carAhead(car, ahead, halfWidth) {
+    const fx = Math.cos(car.angle);
+    const fz = -Math.sin(car.angle);
     for (const other of G.vehicles.cars) {
       if (other === car || other.dead) continue;
-      const dx = other.pos.x - car.pos.x, dz = other.pos.z - car.pos.z;
+      const dx = other.pos.x - car.pos.x;
+      const dz = other.pos.z - car.pos.z;
       const forward = dx * fx + dz * fz;
       const side = Math.abs(-dx * fz + dz * fx);
       if (forward > 0 && forward < ahead && side < halfWidth) return true;
@@ -130,37 +138,38 @@ export function createPolice(G) {
     return false;
   }
 
-  // --- pursuit cars -------------------------------------------------------
+  // --- pursuit cars ----------------------------------------------------
+
   function updateUnit(car, dt, target, targetVel) {
     if (car.dead) return;
-    const px = target.x, pz = target.z;
-    const dx = px - car.pos.x, dz = pz - car.pos.z;
+    const dx = target.x - car.pos.x;
+    const dz = target.z - car.pos.z;
     const dist = Math.hypot(dx, dz) || 1;
 
-    // Predict where the target will be, then blend in avoidance so units
+    // Aim at where the target will be, then blend in separation so units
     // approaching from different angles slide past each other.
     const lead = clamp(dist * 0.02, 0, 0.6);
-    let tx = px + targetVel.x * lead;
-    let tz = pz + targetVel.z * lead;
-    const avoid = avoidanceVector(car, 10, 14);
-    tx += avoid.x; tz += avoid.z;
+    let tx = target.x + targetVel.x * lead;
+    let tz = target.z + targetVel.z * lead;
+    const push = separation(car, 10, 14);
+    tx += push.x;
+    tz += push.z;
 
-    const desiredAngle = Math.atan2(-(tz - car.pos.z), tx - car.pos.x);
-    const turnRate = 2.4;
-    car.angle = angleLerp(car.angle, desiredAngle, Math.min(1, dt * turnRate));
+    const wantAngle = Math.atan2(-(tz - car.pos.z), tx - car.pos.x);
+    car.angle = angleLerp(car.angle, wantAngle, Math.min(1, dt * 2.4));
 
     // Speed: chase hard from range, creep in close, and stop beside an
     // on-foot player so the arrest can happen instead of a drive-through.
-    const playerOnFoot = !G.player.car;
+    const onFoot = !G.player.car;
     const topSpeed = 30 + G.state.wanted * 1.6;
     let wantSpeed = topSpeed;
-    if (playerOnFoot) {
+    if (onFoot) {
       if (dist < 4) wantSpeed = 0;
       else if (dist < 12) wantSpeed = Math.min(topSpeed, 7);
     } else if (dist < 9) {
       wantSpeed = Math.min(topSpeed, 12);
     }
-    if (blockedAhead(car, 9, 2.8)) wantSpeed = Math.min(wantSpeed, 4);
+    if (carAhead(car, 9, 2.8)) wantSpeed = Math.min(wantSpeed, 4);
 
     const accel = wantSpeed > car.speed ? 15 : 24;
     car.speed += clamp(wantSpeed - car.speed, -accel * dt, accel * dt);
@@ -175,9 +184,9 @@ export function createPolice(G) {
 
     // Flashing light bar.
     if (car.lightBar) {
-      const phase = Math.floor((G.time + car.flashAt) * 6) % 2 === 0;
-      car.lightBar.children[0].visible = phase;
-      car.lightBar.children[1].visible = !phase;
+      const redOn = Math.floor((G.time + car.flashAt) * 6) % 2 === 0;
+      car.lightBar.children[0].visible = redOn;
+      car.lightBar.children[1].visible = !redOn;
     }
 
     // Ram: only when moving fast, only on a cooldown, and only against the
@@ -187,16 +196,19 @@ export function createPolice(G) {
       G.vehicles.damageCar(G.player.car, 7, 'police ram');
       G.effects.sparks(car.pos.x, 0.8, car.pos.z);
       G.audio.punch();
-      // shove the player's car sideways a touch
-      const nx = dx / dist, nz = dz / dist;
+      const nx = dx / dist;
+      const nz = dz / dist;
       G.player.car.pos.x += nx * 0.6;
       G.player.car.pos.z += nz * 0.6;
     }
 
-    // Stuck? Teleport back onto a road near the player.
-    if (dist < car.lastDist - 0.5) { car.stuckAt = G.time; car.lastDist = dist; }
+    // Stuck? Jump back onto a road near the player.
+    if (dist < car.lastDist - 0.5) {
+      car.stuckAt = G.time;
+      car.lastDist = dist;
+    }
     if (G.time - car.stuckAt > 5 && dist > 25) {
-      const spot = roadSpawnPoint(px, pz, 38);
+      const spot = roadPoint(target.x, target.z, 38);
       car.pos.set(spot.x, 0, spot.z);
       car.speed = 0;
       car.stuckAt = G.time;
@@ -204,25 +216,31 @@ export function createPolice(G) {
     }
 
     // BUSTED: a unit sitting beside an on-foot player makes the arrest.
-    if (playerOnFoot && dist < 3.4 && Math.abs(car.speed) < 3) {
+    if (onFoot && dist < 3.4 && Math.abs(car.speed) < 3) {
       car.bustTimer += dt;
-      if (car.bustTimer > 1.2) { G.busted(); return; }
+      if (car.bustTimer > 1.2) {
+        G.busted();
+        return;
+      }
     } else {
       car.bustTimer = 0;
     }
   }
 
-  // --- foot cops ----------------------------------------------------------
+  // --- foot cops ---------------------------------------------------------
+
   function updateCop(cop, dt) {
     const p = G.player;
-    const dx = p.pos.x - cop.pos.x, dz = p.pos.z - cop.pos.z;
+    const dx = p.pos.x - cop.pos.x;
+    const dz = p.pos.z - cop.pos.z;
     const dist = Math.hypot(dx, dz) || 1;
     const wanted = G.state.wanted;
 
     // Keep cops from standing inside each other.
     for (const other of cops) {
       if (other === cop) continue;
-      const ox = cop.pos.x - other.pos.x, oz = cop.pos.z - other.pos.z;
+      const ox = cop.pos.x - other.pos.x;
+      const oz = cop.pos.z - other.pos.z;
       const od = Math.hypot(ox, oz);
       if (od > 0.01 && od < 1.4) {
         cop.pos.x += (ox / od) * (1.4 - od) * 0.5;
@@ -231,12 +249,12 @@ export function createPolice(G) {
     }
 
     const walkSpeed = 3.6 + wanted * 0.25;
-    const desiredAngle = Math.atan2(-dx, -dz);
-    cop.angle = angleLerp(cop.angle, desiredAngle, Math.min(1, dt * 8));
+    const wantAngle = Math.atan2(-dx, -dz);
+    cop.angle = angleLerp(cop.angle, wantAngle, Math.min(1, dt * 8));
     cop.mesh.group.rotation.y = cop.angle;
 
     if (dist > 1.6) {
-      // Close the distance; stop just short so the arrest timer can run.
+      // Close in; stop just short so the arrest timer can run.
       cop.pos.x += Math.sin(cop.angle) * walkSpeed * dt;
       cop.pos.z += Math.cos(cop.angle) * walkSpeed * dt;
       cop.walkPhase += dt * walkSpeed * 2.4;
@@ -256,7 +274,10 @@ export function createPolice(G) {
     // On-foot arrest: a cop standing on the player for a second busts them.
     if (!p.car && dist < 1.6) {
       cop.bustTimer += dt;
-      if (cop.bustTimer > 1.0) { G.busted(); return; }
+      if (cop.bustTimer > 1.0) {
+        G.busted();
+        return;
+      }
     } else {
       cop.bustTimer = 0;
     }
@@ -278,32 +299,32 @@ export function createPolice(G) {
       const to = new THREE.Vector3(
         p.pos.x + (Math.random() - 0.5) * 3,
         p.car ? 1 : 1.2,
-        p.pos.z + (Math.random() - 0.5) * 3
+        p.pos.z + (Math.random() - 0.5) * 3,
       );
       G.effects.tracer(from, to);
       G.audio.gunshot();
       G.effects.sparks(to.x, to.y, to.z);
-      // one shot in three lands
       if (Math.random() < 0.34) G.hurtPlayer(4, 'police gunfire');
     }
   }
 
-  // --- main update --------------------------------------------------------
+  // --- main update -------------------------------------------------------
+
   function update(dt) {
     const wanted = G.state.wanted;
     const p = G.player;
 
     // Field the right number of pursuit cars for the wanted level.
-    const wantUnits = UNITS_PER_STAR[clamp(wanted, 0, 5)];
+    const wantUnits = CARS_PER_STAR[clamp(wanted, 0, 5)];
     while (units.length < wantUnits) spawnUnit();
     while (units.length > wantUnits) removeUnit(units[units.length - 1]);
 
     // Foot cops from 3 stars up, capped so the street never floods.
-    const wantCops = wanted >= 3 ? Math.min(wanted - 1, MAX_COPS) : 0;
+    const wantCops = wanted >= 3 ? Math.min(wanted - 1, MAX_FOOT_COPS) : 0;
     while (cops.length < wantCops) spawnCop();
     while (cops.length > wantCops) removeCop(cops[cops.length - 1]);
 
-    // Target: the player's car when driving, Rico on foot otherwise.
+    // Chase the player's car when driving, Rico on foot otherwise.
     const target = p.car ? p.car.pos : p.pos;
     const targetVel = p.car
       ? { x: Math.cos(p.car.angle) * p.car.speed, z: -Math.sin(p.car.angle) * p.car.speed }

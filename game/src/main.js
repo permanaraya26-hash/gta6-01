@@ -1,4 +1,4 @@
-// Solmar Bay — main bootstrap and game loop.
+// Solmar Bay — bootstrap and game loop, rewritten.
 // Wires the city, people, cars, police, combat, missions, HUD and audio
 // into one playable open-world game. Original code written for this entry.
 import * as THREE from 'three';
@@ -19,7 +19,7 @@ const seed = hashSeed(params.get('seed') || 'solmar-bay-1');
 const shotName = params.get('shot');
 const rng = mulberry32(seed);
 
-// --- renderer / scene ---
+// --- renderer and scene -------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -31,16 +31,32 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 
-// --- shared game object ---
+// --- the shared game object ---------------------------------------------
 const G = {
-  scene, camera, renderer, seed, rng,
-  time: 0, camYaw: 0.6, camPitch: 0.34, camDist: 13,
-  camPos: new THREE.Vector3(), camLook: new THREE.Vector3(),
-  shotOrbit: false, shotName,
+  scene,
+  camera,
+  renderer,
+  seed,
+  rng,
+  time: 0,
+  camYaw: 0.6,
+  camPitch: 0.34,
+  camDist: 13,
+  camPos: new THREE.Vector3(),
+  camLook: new THREE.Vector3(),
+  shotOrbit: false,
+  shotName,
   state: {
-    mode: 'menu', cash: 0, health: 100, wanted: 0, wantedTimer: 0,
-    clockMinutes: 8 * 60, missionIndex: 0, missionsDone: 0,
-    carsStolen: 0, pedsDown: 0,
+    mode: 'menu',
+    cash: 0,
+    health: 100,
+    wanted: 0,
+    wantedTimer: 0,
+    clockMinutes: 8 * 60,
+    missionIndex: 0,
+    missionsDone: 0,
+    carsStolen: 0,
+    pedsDown: 0,
   },
   hasSave,
 };
@@ -49,12 +65,14 @@ G.city = createCity(scene, seed);
 G.effects = createEffects(G);
 G.cityCollide = (pos, r) => collideCircle(G.city.colliders, pos, r);
 
+// Raise the wanted level, with a toast the first time the heat comes on.
 G.addWanted = (n, reason) => {
   if (G.state.mode !== 'playing') return;
   const before = G.state.wanted;
   G.state.wanted = clamp(G.state.wanted + n, 0, 5);
   if (before === 0 && G.state.wanted > 0) {
-    G.toast('Wanted — ' + G.state.wanted + ' star' + (G.state.wanted > 1 ? 's' : ''), reason ? 'The SBPD is responding to: ' + reason + '.' : 'Lose the cops to cool off.');
+    const stars = G.state.wanted + ' star' + (G.state.wanted > 1 ? 's' : '');
+    G.toast('Wanted — ' + stars, reason ? 'The SBPD is responding to: ' + reason + '.' : 'Lose the cops to cool off.');
   }
   G.state.wantedTimer = 0;
 };
@@ -66,32 +84,35 @@ G.hurtPlayer = (amount, cause) => {
   if (G.state.health <= 0) G.wasted();
 };
 
-G.busted = () => {
-  if (G.state.mode !== 'playing') return;
-  const lost = Math.floor(G.state.cash * 0.2);
+// Losing 20% of your cash and the run ends — busted or wasted share this.
+function endRun(kind, lost) {
   G.state.cash -= lost;
   G.state.wanted = 0;
   G.police.clearAll();
-  if (G.player.car) { G.player.car.isPlayer = false; G.player.car.speed = 0; G.player.car = null; G.player.mesh.group.visible = true; }
-  G.audio.busted();
+  if (G.player.car) {
+    G.player.car.isPlayer = false;
+    G.player.car.speed = 0;
+    G.player.car = null;
+    G.player.mesh.group.visible = true;
+  }
   G.audio.setSiren(false);
   G.state.mode = 'end';
-  G.hud.showEnd('busted', lost);
+  G.hud.showEnd(kind, lost);
   G.saveGame();
+}
+
+G.busted = () => {
+  if (G.state.mode !== 'playing') return;
+  const lost = Math.floor(G.state.cash * 0.2);
+  G.audio.busted();
+  endRun('busted', lost);
 };
 
 G.wasted = () => {
   if (G.state.mode !== 'playing') return;
   const lost = Math.floor(G.state.cash * 0.2);
-  G.state.cash -= lost;
-  G.state.wanted = 0;
-  G.police.clearAll();
-  if (G.player.car) { G.player.car.isPlayer = false; G.player.car.speed = 0; G.player.car = null; G.player.mesh.group.visible = true; }
   G.audio.wasted();
-  G.audio.setSiren(false);
-  G.state.mode = 'end';
-  G.hud.showEnd('wasted', lost);
-  G.saveGame();
+  endRun('wasted', lost);
 };
 
 G.toast = (t, s) => G.hud.toast(t, s);
@@ -117,7 +138,7 @@ function respawnAtSafehouse() {
   G.toast('Safehouse', 'You got away — this time. Vera left a note on the door.');
 }
 
-// --- input ---
+// --- input ---------------------------------------------------------------
 const keys = {};
 const input = {
   get forward() { return keys.KeyW || keys.ArrowUp; },
@@ -128,6 +149,7 @@ const input = {
   get jump() { return keys.Space && !G.player.car; },
   get handbrake() { return keys.Space && !!G.player.car; },
 };
+
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys[e.code] = true;
@@ -142,18 +164,21 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && G.state.mode === 'playing') G.combat.reload();
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
+
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (G.state.mode !== 'playing') return;
   G.audio.unlock();
   if (e.button === 0) G.combat.shoot();
   G.dragging = true;
-  G.dragX = e.clientX; G.dragY = e.clientY;
+  G.dragX = e.clientX;
+  G.dragY = e.clientY;
 });
 addEventListener('pointermove', (e) => {
   if (!G.dragging || G.state.mode !== 'playing') return;
   G.camYaw -= (e.clientX - G.dragX) * 0.005;
   G.camPitch = clamp(G.camPitch + (e.clientY - G.dragY) * 0.003, 0.08, 1.05);
-  G.dragX = e.clientX; G.dragY = e.clientY;
+  G.dragX = e.clientX;
+  G.dragY = e.clientY;
 });
 addEventListener('pointerup', () => { G.dragging = false; });
 addEventListener('wheel', (e) => {
@@ -162,7 +187,10 @@ addEventListener('wheel', (e) => {
 }, { passive: true });
 
 function toggleCar() {
-  if (G.player.car) { G.peds.exitCar(false); return; }
+  if (G.player.car) {
+    G.peds.exitCar(false);
+    return;
+  }
   const car = G.vehicles.nearestCar(G.player.pos.x, G.player.pos.z, 4.5, null);
   if (car) G.peds.enterCar(car);
 }
@@ -179,13 +207,15 @@ function resumeGame() {
   G.audio.unlock();
 }
 
-// --- menus ---
+// --- menus ---------------------------------------------------------------
 document.getElementById('btn-new').addEventListener('click', () => {
-  G.audio.unlock(); G.audio.click();
+  G.audio.unlock();
+  G.audio.click();
   newGame();
 });
 document.getElementById('btn-continue').addEventListener('click', () => {
-  G.audio.unlock(); G.audio.click();
+  G.audio.unlock();
+  G.audio.click();
   continueGame();
 });
 document.getElementById('btn-how').addEventListener('click', () => {
@@ -209,15 +239,23 @@ document.getElementById('btn-respawn').addEventListener('click', () => {
 
 function newGame() {
   const s = G.state;
-  s.cash = 150; s.health = 100; s.wanted = 0; s.wantedTimer = 0;
-  s.clockMinutes = 8 * 60; s.missionIndex = 0; s.missionsDone = 0;
-  s.carsStolen = 0; s.pedsDown = 0;
+  s.cash = 150;
+  s.health = 100;
+  s.wanted = 0;
+  s.wantedTimer = 0;
+  s.clockMinutes = 8 * 60;
+  s.missionIndex = 0;
+  s.missionsDone = 0;
+  s.carsStolen = 0;
+  s.pedsDown = 0;
   G.police.clearAll();
   G.player.pos.set(G.city.spawnPos.x, 0, G.city.spawnPos.z);
   G.player.angle = Math.PI;
   G.player.car = null;
   G.player.mesh.group.visible = true;
-  G.camYaw = 0.6; G.camPitch = 0.34; G.camDist = 13;
+  G.camYaw = 0.6;
+  G.camPitch = 0.34;
+  G.camDist = 13;
   G.missions.resetForNewGame();
   s.mode = 'playing';
   G.hud.showMenu('playing');
@@ -226,12 +264,20 @@ function newGame() {
 
 function continueGame() {
   const data = loadGame();
-  if (!data) { newGame(); return; }
+  if (!data) {
+    newGame();
+    return;
+  }
   const s = G.state;
-  s.cash = data.cash; s.health = data.health; s.missionIndex = data.missionIndex;
-  s.missionsDone = data.missionsDone; s.clockMinutes = data.clockMinutes;
-  s.carsStolen = data.carsStolen || 0; s.pedsDown = data.pedsDown || 0;
-  s.wanted = 0; s.wantedTimer = 0;
+  s.cash = data.cash;
+  s.health = data.health;
+  s.missionIndex = data.missionIndex;
+  s.missionsDone = data.missionsDone;
+  s.clockMinutes = data.clockMinutes;
+  s.carsStolen = data.carsStolen || 0;
+  s.pedsDown = data.pedsDown || 0;
+  s.wanted = 0;
+  s.wantedTimer = 0;
   G.police.clearAll();
   G.player.pos.set(data.player.x, 0, data.player.z);
   G.player.angle = data.player.angle || 0;
@@ -243,7 +289,7 @@ function continueGame() {
   G.toast('Welcome back', 'Your save was loaded. The city kept spinning without you.');
 }
 
-// --- world setup ---
+// --- world setup ----------------------------------------------------------
 G.vehicles.spawnParked();
 for (let i = 0; i < 10; i++) G.vehicles.spawnTrafficCar();
 G.missions.startMission(0);
@@ -253,23 +299,23 @@ G.hud.setObjective('Solmar Bay', 'Meet Vera at the pier.');
 
 if (shotName) {
   applyShot(G, shotName);
-  // let the shot scene settle a few frames before screenshots
-  G.shotSettle = 0;
+  G.shotSettle = 0; // let the shot scene settle a few frames before screenshots
 }
 
+// --- game loop ------------------------------------------------------------
 let lastSave = 0;
 const clock = new THREE.Clock();
 
 function updateCamera(dt) {
   if (G.state.mode === 'menu') {
-    // slow orbit over the city for the title screen
+    // Slow orbit over the city behind the title screen.
     const t = G.time * 0.045;
     camera.position.set(40 + Math.cos(t) * 210, 125, Math.sin(t) * 210);
     camera.lookAt(50, 0, 0);
     return;
   }
   const target = G.player.car ? G.player.car.pos : G.player.pos;
-  const ty = (G.player.car ? 1.2 : 1.6);
+  const ty = G.player.car ? 1.2 : 1.6;
   const ox = Math.sin(G.camYaw) * G.camDist;
   const oz = Math.cos(G.camYaw) * G.camDist;
   const oy = 2.2 + Math.sin(G.camPitch) * G.camDist;
@@ -293,10 +339,13 @@ function tick() {
     G.missions.update(dt);
     G.effects.update(dt);
     G.hud.update();
-    if (G.time - lastSave > 30) { lastSave = G.time; G.saveGame(); }
+    if (G.time - lastSave > 30) {
+      lastSave = G.time;
+      G.saveGame();
+    }
   } else if (G.state.mode === 'menu') {
     G.time += dt;
-    // idle city life behind the menu
+    // Idle city life behind the menu.
     G.vehicles.updateTraffic(dt);
     G.peds.updatePeds(dt);
     G.effects.update(dt);
@@ -311,7 +360,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// test hook: lets the automated playtest read game state
+// Test hook: lets the automated playtest read game state.
 window.__solmar = {
   G,
   get state() { return G.state.mode; },

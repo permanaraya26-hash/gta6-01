@@ -78,6 +78,27 @@ must sit inside the gate caps).
 `2-foot.jpg` — Rico on foot by Palm Court Park. `3-mission.jpg` — a package
 pickup on Pier 7. `4-start.jpg` — the title screen over the whole city.
 
+## Rebuild status (recorded stages)
+
+The entry is being re-written under fresh sealed recordings because the two
+recordings that built it first could not be entered (recording 1 sealed but
+its builders began before it; recording 2 never sealed — the site sealed it
+while the local recorder was a chunk behind, and it witnessed almost none of
+the builders' sessions).
+
+- **Stage 1 (recording 01a1ec8a):** the four core files were rewritten in a
+  new structure with the same systems and tuning — `game/src/city.js` (the
+  procedural coastal city: road grid, blocks, park, beach, pier, palms,
+  lamps, clouds), `game/src/police.js` (SBPD pursuit cars with separation
+  and avoidance steering, rams on a cooldown, foot cops who punch and open
+  fire at 3+ stars, wanted decay), `game/src/vehicles.js` (car models,
+  traffic AI, arcade driving, damage/smoke/explosions) and `game/src/main.js`
+  (bootstrap, game loop, camera, input, menus, new/continue game). All four
+  parse as ES modules, every named import resolves, and a headless-Chromium
+  smoke test loads the game (WebGL canvas, HUD and menus mount, no JS
+  errors). Later stages rewrite the remaining source files and re-take the
+  screenshots.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
