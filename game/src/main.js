@@ -1,6 +1,6 @@
-// Solmar Bay — bootstrap and game loop, rewritten.
+// Solmar Bay — bootstrap and game loop.
 // Wires the city, people, cars, police, combat, missions, HUD and audio
-// into one playable open-world game. Original code written for this entry.
+// into one playable open-world game. Written from scratch for this entry.
 import * as THREE from 'three';
 import { mulberry32, hashSeed, clamp } from './util.js';
 import { createCity, collideCircle } from './city.js';
@@ -14,12 +14,12 @@ import { createHud } from './hud.js';
 import { saveGame, loadGame, hasSave } from './save.js';
 import { applyShot } from './shots.js';
 
-const params = new URLSearchParams(location.search);
-const seed = hashSeed(params.get('seed') || 'solmar-bay-1');
-const shotName = params.get('shot');
-const rng = mulberry32(seed);
+const query = new URLSearchParams(location.search);
+const worldSeed = hashSeed(query.get('seed') || 'solmar-bay-1');
+const shotId = query.get('shot');
+const worldRng = mulberry32(worldSeed);
 
-// --- renderer and scene -------------------------------------------------
+// --- renderer and scene ---------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -31,13 +31,13 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1200);
 
-// --- the shared game object ---------------------------------------------
+// --- the shared game object ------------------------------------------
 const G = {
   scene,
   camera,
   renderer,
-  seed,
-  rng,
+  seed: worldSeed,
+  rng: worldRng,
   time: 0,
   camYaw: 0.6,
   camPitch: 0.34,
@@ -45,7 +45,7 @@ const G = {
   camPos: new THREE.Vector3(),
   camLook: new THREE.Vector3(),
   shotOrbit: false,
-  shotName,
+  shotName: shotId,
   state: {
     mode: 'menu',
     cash: 0,
@@ -61,7 +61,7 @@ const G = {
   hasSave,
 };
 G.audio = createAudio();
-G.city = createCity(scene, seed);
+G.city = createCity(scene, worldSeed);
 G.effects = createEffects(G);
 G.cityCollide = (pos, r) => collideCircle(G.city.colliders, pos, r);
 
@@ -84,8 +84,8 @@ G.hurtPlayer = (amount, cause) => {
   if (G.state.health <= 0) G.wasted();
 };
 
-// Losing 20% of your cash and the run ends — busted or wasted share this.
-function endRun(kind, lost) {
+// Losing 20% of the cash ends the run — busted or wasted share this.
+function finishRun(kind, lost) {
   G.state.cash -= lost;
   G.state.wanted = 0;
   G.police.clearAll();
@@ -105,14 +105,14 @@ G.busted = () => {
   if (G.state.mode !== 'playing') return;
   const lost = Math.floor(G.state.cash * 0.2);
   G.audio.busted();
-  endRun('busted', lost);
+  finishRun('busted', lost);
 };
 
 G.wasted = () => {
   if (G.state.mode !== 'playing') return;
   const lost = Math.floor(G.state.cash * 0.2);
   G.audio.wasted();
-  endRun('wasted', lost);
+  finishRun('wasted', lost);
 };
 
 G.toast = (t, s) => G.hud.toast(t, s);
@@ -128,7 +128,7 @@ G.hud = createHud(G);
 
 G.saveGame = () => saveGame({ ...G.state, player: G.player });
 
-function respawnAtSafehouse() {
+function backToSafehouse() {
   G.player.pos.set(G.city.safehousePos.x, 0, G.city.safehousePos.z);
   G.player.angle = Math.PI;
   G.player.vy = 0;
@@ -138,32 +138,32 @@ function respawnAtSafehouse() {
   G.toast('Safehouse', 'You got away — this time. Vera left a note on the door.');
 }
 
-// --- input ---------------------------------------------------------------
-const keys = {};
+// --- input ------------------------------------------------------------
+const pressed = {};
 const input = {
-  get forward() { return keys.KeyW || keys.ArrowUp; },
-  get back() { return keys.KeyS || keys.ArrowDown; },
-  get left() { return keys.KeyA || keys.ArrowLeft; },
-  get right() { return keys.KeyD || keys.ArrowRight; },
-  get run() { return keys.ShiftLeft || keys.ShiftRight; },
-  get jump() { return keys.Space && !G.player.car; },
-  get handbrake() { return keys.Space && !!G.player.car; },
+  get forward() { return pressed.KeyW || pressed.ArrowUp; },
+  get back() { return pressed.KeyS || pressed.ArrowDown; },
+  get left() { return pressed.KeyA || pressed.ArrowLeft; },
+  get right() { return pressed.KeyD || pressed.ArrowRight; },
+  get run() { return pressed.ShiftLeft || pressed.ShiftRight; },
+  get jump() { return pressed.Space && !G.player.car; },
+  get handbrake() { return pressed.Space && !!G.player.car; },
 };
 
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  keys[e.code] = true;
+  pressed[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyM') G.audio.setMuted(!G.audio.isMuted());
   if (e.code === 'KeyP' || e.code === 'Escape') {
-    if (G.state.mode === 'playing') pauseGame();
-    else if (G.state.mode === 'paused') resumeGame();
+    if (G.state.mode === 'playing') pause();
+    else if (G.state.mode === 'paused') resume();
   }
-  if (e.code === 'KeyE' && G.state.mode === 'playing') toggleCar();
+  if (e.code === 'KeyE' && G.state.mode === 'playing') swapCar();
   if (e.code === 'KeyF' && G.state.mode === 'playing') G.combat.punch();
   if (e.code === 'KeyR' && G.state.mode === 'playing') G.combat.reload();
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; });
+addEventListener('keyup', (e) => { pressed[e.code] = false; });
 
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (G.state.mode !== 'playing') return;
@@ -186,7 +186,7 @@ addEventListener('wheel', (e) => {
   G.camDist = clamp(G.camDist + Math.sign(e.deltaY) * 1.5, 7, 26);
 }, { passive: true });
 
-function toggleCar() {
+function swapCar() {
   if (G.player.car) {
     G.peds.exitCar(false);
     return;
@@ -195,38 +195,38 @@ function toggleCar() {
   if (car) G.peds.enterCar(car);
 }
 
-function pauseGame() {
+function pause() {
   G.state.mode = 'paused';
   G.hud.showMenu('pause');
   G.audio.setEngine(0, false);
   G.audio.setSiren(false);
 }
-function resumeGame() {
+function resume() {
   G.state.mode = 'playing';
   G.hud.showMenu('playing');
   G.audio.unlock();
 }
 
-// --- menus ---------------------------------------------------------------
+// --- menus -------------------------------------------------------------
 document.getElementById('btn-new').addEventListener('click', () => {
   G.audio.unlock();
   G.audio.click();
-  newGame();
+  startFresh();
 });
 document.getElementById('btn-continue').addEventListener('click', () => {
   G.audio.unlock();
   G.audio.click();
-  continueGame();
+  startSaved();
 });
 document.getElementById('btn-how').addEventListener('click', () => {
   const h = document.getElementById('howto');
   h.style.display = h.style.display === 'none' ? 'block' : 'none';
 });
-document.getElementById('btn-resume').addEventListener('click', resumeGame);
+document.getElementById('btn-resume').addEventListener('click', resume);
 document.getElementById('btn-save').addEventListener('click', () => {
   if (G.saveGame()) G.toast('Game saved', 'Progress stored in this browser.');
 });
-document.getElementById('btn-restart').addEventListener('click', () => { newGame(); });
+document.getElementById('btn-restart').addEventListener('click', () => { startFresh(); });
 document.getElementById('btn-quit').addEventListener('click', () => {
   G.state.mode = 'menu';
   G.police.clearAll();
@@ -234,10 +234,10 @@ document.getElementById('btn-quit').addEventListener('click', () => {
 });
 document.getElementById('btn-respawn').addEventListener('click', () => {
   G.audio.click();
-  respawnAtSafehouse();
+  backToSafehouse();
 });
 
-function newGame() {
+function startFresh() {
   const s = G.state;
   s.cash = 150;
   s.health = 100;
@@ -262,10 +262,10 @@ function newGame() {
   G.toast('Welcome to Solmar Bay', 'Go meet Vera Cruz at the pier. Follow the yellow marker.');
 }
 
-function continueGame() {
+function startSaved() {
   const data = loadGame();
   if (!data) {
-    newGame();
+    startFresh();
     return;
   }
   const s = G.state;
@@ -289,7 +289,7 @@ function continueGame() {
   G.toast('Welcome back', 'Your save was loaded. The city kept spinning without you.');
 }
 
-// --- world setup ----------------------------------------------------------
+// --- world setup --------------------------------------------------------
 G.vehicles.spawnParked();
 for (let i = 0; i < 10; i++) G.vehicles.spawnTrafficCar();
 G.missions.startMission(0);
@@ -297,16 +297,16 @@ G.state.mode = 'menu';
 G.hud.showMenu('start');
 G.hud.setObjective('Solmar Bay', 'Meet Vera at the pier.');
 
-if (shotName) {
-  applyShot(G, shotName);
-  G.shotSettle = 0; // let the shot scene settle a few frames before screenshots
+if (shotId) {
+  applyShot(G, shotId);
+  G.shotSettle = 0;
 }
 
-// --- game loop ------------------------------------------------------------
-let lastSave = 0;
-const clock = new THREE.Clock();
+// --- game loop -----------------------------------------------------------
+let savedAt = 0;
+const frameClock = new THREE.Clock();
 
-function updateCamera(dt) {
+function moveCamera(dt) {
   if (G.state.mode === 'menu') {
     // Slow orbit over the city behind the title screen.
     const t = G.time * 0.045;
@@ -324,9 +324,9 @@ function updateCamera(dt) {
   camera.lookAt(target.x, ty, target.z);
 }
 
-function tick() {
-  requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.05);
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(frameClock.getDelta(), 0.05);
   if (G.state.mode === 'playing') {
     G.time += dt;
     G.state.clockMinutes += dt * 0.5;
@@ -339,8 +339,8 @@ function tick() {
     G.missions.update(dt);
     G.effects.update(dt);
     G.hud.update();
-    if (G.time - lastSave > 30) {
-      lastSave = G.time;
+    if (G.time - savedAt > 30) {
+      savedAt = G.time;
       G.saveGame();
     }
   } else if (G.state.mode === 'menu') {
@@ -350,7 +350,7 @@ function tick() {
     G.peds.updatePeds(dt);
     G.effects.update(dt);
   }
-  updateCamera(dt);
+  moveCamera(dt);
   renderer.render(scene, camera);
 }
 
@@ -370,4 +370,4 @@ window.addEventListener('error', (e) => {
   (window.__errors = window.__errors || []).push(String(e.message));
 });
 
-tick();
+frame();

@@ -1,6 +1,6 @@
-// Cars for Solmar Bay, rewritten: build, park, drive (arcade physics)
-// and traffic AI. All car models are boxes and cylinders assembled in
-// code — original art, no borrowed assets.
+// Cars for Solmar Bay — built, parked, driven and crashed in code.
+// Every car model is boxes and cylinders assembled here: original art,
+// nothing borrowed. Arcade handling, traffic AI and damage included.
 import * as THREE from 'three';
 import { ROAD_LINES } from './city.js';
 import { mulberry32, randRange, pick, clamp } from './util.js';
@@ -8,16 +8,17 @@ import { mulberry32, randRange, pick, clamp } from './util.js';
 export const CAR_NAMES = ['Comet GT', 'Palm Runner', 'Bay Cruiser', 'Sunset Van', 'Dune Buggy', 'Marina Sedan', 'Coral Coupe', 'Harbor Taxi'];
 export const CAR_COLORS = [0xd23b2e, 0xe8c832, 0x2e6fd2, 0x2ea88a, 0xe87a1e, 0xe8e8e8, 0xd24a8a, 0xf2b705];
 
-const CAR_LEN = 4.6;
-const CAR_WID = 2.0;
+// Body dimensions every car in the game shares.
+const BODY_LEN = 4.6;
+const BODY_WID = 2.0;
 
-// Assemble a car from boxes and cylinders. Police cars get a white body,
-// a light bar and door stripes; civilian cars get the given paint.
+// Assemble a car from boxes and cylinders. A police car gets a white
+// body, a roof light bar and dark door stripes; a civilian car gets paint.
 export function buildCarMesh(color, isPolice) {
   const g = new THREE.Group();
   const paint = new THREE.MeshLambertMaterial({ color: isPolice ? 0xf0f0f0 : color });
   const dark = new THREE.MeshLambertMaterial({ color: 0x1a2027 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 0.85, CAR_WID), paint);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(BODY_LEN, 0.85, BODY_WID), paint);
   body.position.y = 0.62;
   body.castShadow = true;
   g.add(body);
@@ -26,29 +27,29 @@ export function buildCarMesh(color, isPolice) {
   cabin.castShadow = true;
   g.add(cabin);
 
-  const bumperMat = new THREE.MeshLambertMaterial({ color: 0x22262c });
-  for (const sx of [-CAR_LEN / 2 - 0.05, CAR_LEN / 2 + 0.05]) {
-    const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, CAR_WID), bumperMat);
+  const trimMat = new THREE.MeshLambertMaterial({ color: 0x22262c });
+  for (const sx of [-BODY_LEN / 2 - 0.05, BODY_LEN / 2 + 0.05]) {
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, BODY_WID), trimMat);
     bumper.position.set(sx, 0.45, 0);
     g.add(bumper);
   }
 
-  const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
-  const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+  const frontMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+  const rearMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
   for (const dz of [-0.65, 0.65]) {
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.4), headMat);
-    head.position.set(CAR_LEN / 2 + 0.02, 0.7, dz);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.4), frontMat);
+    head.position.set(BODY_LEN / 2 + 0.02, 0.7, dz);
     g.add(head);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.4), tailMat);
-    tail.position.set(-CAR_LEN / 2 - 0.02, 0.7, dz);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.4), rearMat);
+    tail.position.set(-BODY_LEN / 2 - 0.02, 0.7, dz);
     g.add(tail);
   }
 
-  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12);
-  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x14181c });
+  const tyreGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 12);
+  const tyreMat = new THREE.MeshLambertMaterial({ color: 0x14181c });
   const wheels = [];
   for (const [wx, wz] of [[1.5, 0.95], [1.5, -0.95], [-1.5, 0.95], [-1.5, -0.95]]) {
-    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    const wheel = new THREE.Mesh(tyreGeo, tyreMat);
     wheel.rotation.x = Math.PI / 2;
     wheel.position.set(wx, 0.42, wz);
     g.add(wheel);
@@ -69,7 +70,7 @@ export function buildCarMesh(color, isPolice) {
     const stripeMat = new THREE.MeshLambertMaterial({ color: 0x14181c });
     for (const side of [1, -1]) {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.4, 0.06), stripeMat);
-      stripe.position.set(-0.25, 0.75, (CAR_WID / 2 + 0.01) * side);
+      stripe.position.set(-0.25, 0.75, (BODY_WID / 2 + 0.01) * side);
       g.add(stripe);
     }
   }
@@ -77,13 +78,13 @@ export function buildCarMesh(color, isPolice) {
 }
 
 export function createVehicles(G) {
-  const rng = mulberry32(G.seed + 101);
-  const cars = [];    // every car in the world
-  const traffic = []; // moving AI cars (a subset of cars)
+  const rnd = mulberry32(G.seed + 101);
+  const cars = [];
+  const traffic = [];
 
-  function makeCar(x, z, angle, opts = {}) {
-    const color = opts.color ?? pick(rng, CAR_COLORS);
-    const name = opts.name ?? pick(rng, CAR_NAMES);
+  function assembleCar(x, z, angle, opts = {}) {
+    const color = opts.color ?? pick(rnd, CAR_COLORS);
+    const name = opts.name ?? pick(rnd, CAR_NAMES);
     const { group, wheels, lightBar } = buildCarMesh(color, !!opts.police);
     group.position.set(x, 0, z);
     group.rotation.y = angle;
@@ -115,38 +116,38 @@ export function createVehicles(G) {
     return car;
   }
 
-  // A fixed row of parked cars the player can steal.
-  function spawnParked() {
+  // Ten parked cars along the avenues, waiting to be stolen.
+  function parkRow() {
     const spots = [
       [-52, 8.5], [0, -60.5], [52, 60.5], [104, -8.5], [-104, 60.5],
       [-156, -60.5], [156, 8.5], [52, -108.5], [-52, 108.5], [104, 108.5],
     ];
     for (const [x, z] of spots) {
       const alongX = Math.abs(z) % 52 < 26;
-      makeCar(x, z, alongX ? 0 : Math.PI / 2, { parked: true });
+      assembleCar(x, z, alongX ? 0 : Math.PI / 2, { parked: true });
     }
   }
 
-  function spawnTrafficCar() {
-    const line = pick(rng, ROAD_LINES);
-    const axis = rng() < 0.5 ? 'x' : 'z';
-    const dir = rng() < 0.5 ? 1 : -1;
-    const t = randRange(rng, -170, 170);
+  function addTrafficCar() {
+    const line = pick(rnd, ROAD_LINES);
+    const axis = rnd() < 0.5 ? 'x' : 'z';
+    const dir = rnd() < 0.5 ? 1 : -1;
+    const t = randRange(rnd, -170, 170);
     const angle = axis === 'x'
       ? (dir > 0 ? 0 : Math.PI)
       : (dir > 0 ? -Math.PI / 2 : Math.PI / 2);
-    const car = makeCar(
+    const car = assembleCar(
       axis === 'x' ? t : line,
       axis === 'x' ? line : t,
       angle,
       { traffic: true, axis, line, dir },
     );
-    car.speed = randRange(rng, 7, 11);
+    car.speed = randRange(rnd, 7, 11);
     traffic.push(car);
     return car;
   }
 
-  function removeCar(car) {
+  function dropCar(car) {
     G.scene.remove(car.group);
     const i = cars.indexOf(car);
     if (i >= 0) cars.splice(i, 1);
@@ -154,7 +155,7 @@ export function createVehicles(G) {
     if (j >= 0) traffic.splice(j, 1);
   }
 
-  function nearestCar(x, z, maxD, exclude) {
+  function closestCar(x, z, maxD, exclude) {
     let best = null;
     let bestD = maxD;
     for (const c of cars) {
@@ -168,17 +169,17 @@ export function createVehicles(G) {
     return best;
   }
 
-  function damageCar(car, amount, cause) {
+  function hurtCar(car, amount, cause) {
     if (car.dead) return;
     car.health -= amount;
     if (car.health <= 40 && !car.smoke) {
-      car.smoke = new SmokePuff(G.scene);
+      car.smoke = new SmokeTrail(G.scene);
       car.smoke.attach(car);
     }
-    if (car.health <= 0) explodeCar(car, cause);
+    if (car.health <= 0) blowUpCar(car, cause);
   }
 
-  function explodeCar(car, cause) {
+  function blowUpCar(car, cause) {
     if (car.dead) return;
     car.dead = true;
     G.effects.explosion(car.pos.x, 1, car.pos.z);
@@ -191,11 +192,11 @@ export function createVehicles(G) {
       car.smoke.dispose();
       car.smoke = null;
     }
-    removeCar(car);
+    dropCar(car);
   }
 
   // Is anything stopped in front of `car` within `ahead` metres?
-  function blockedInFront(car, ahead, halfWidth, includePeds) {
+  function obstacleAhead(car, ahead, halfWidth, includePeds) {
     const fx = Math.cos(car.angle);
     const fz = -Math.sin(car.angle);
     for (const other of cars) {
@@ -214,24 +215,24 @@ export function createVehicles(G) {
     return false;
   }
 
-  // Traffic AI: follow the road grid, turn at intersections, brake for
-  // the car or pedestrian ahead, and wrap around at the city edge.
-  function updateTraffic(dt) {
+  // Traffic AI: follow the grid, turn at crossings, brake for whatever is
+  // ahead, and wrap around at the city edge instead of driving into the sea.
+  function moveTraffic(dt) {
     for (const car of traffic) {
       if (car.dead) continue;
-      const blocked = blockedInFront(car, 11, 2.6, true);
+      const blocked = obstacleAhead(car, 11, 2.6, true);
       const targetSpeed = blocked ? 0 : 9;
       car.speed += clamp(targetSpeed - car.speed, -14 * dt, 6 * dt);
       car.pos.x += Math.cos(car.angle) * car.speed * dt;
       car.pos.z += -Math.sin(car.angle) * car.speed * dt;
-      // Turn at an intersection, sometimes, onto a new road.
+      // At a crossing, sometimes turn onto a new avenue.
       const along = car.axis === 'x' ? car.pos.x : car.pos.z;
       const nearLine = ROAD_LINES.find((l) => Math.abs(along - l) < 1.2);
-      if (nearLine !== undefined && rng() < 0.35 * dt) {
-        if (rng() < 0.3) {
-          const newLine = pick(rng, ROAD_LINES);
+      if (nearLine !== undefined && rnd() < 0.35 * dt) {
+        if (rnd() < 0.3) {
+          const newLine = pick(rnd, ROAD_LINES);
           const newAxis = car.axis === 'x' ? 'z' : 'x';
-          const newDir = rng() < 0.5 ? 1 : -1;
+          const newDir = rnd() < 0.5 ? 1 : -1;
           car.axis = newAxis;
           car.line = newLine;
           car.dir = newDir;
@@ -242,7 +243,6 @@ export function createVehicles(G) {
           else car.pos.x = newLine;
         }
       }
-      // Wrap at the city edge instead of driving into the sea.
       if (car.pos.x > 200 || car.pos.x < -200 || car.pos.z > 200 || car.pos.z < -200) {
         car.pos.x = clamp(car.pos.x, -180, 180);
         car.pos.z = clamp(car.pos.z, -180, 180);
@@ -273,7 +273,7 @@ export function createVehicles(G) {
             b.pos.z += nz * push;
           }
           if ((a.isPlayer || b.isPlayer) && Math.abs(a.speed - b.speed) > 3) {
-            damageCar(a.isPlayer ? a : b, 4, 'crash');
+            hurtCar(a.isPlayer ? a : b, 4, 'crash');
             G.audio.punch();
           }
         }
@@ -281,8 +281,9 @@ export function createVehicles(G) {
     }
   }
 
-  // Arcade driving for the player's car.
-  function drivePlayer(dt, input) {
+  // Arcade driving for the player's car: accelerate, brake, steer, bounce
+  // off walls, slow down on sand and stop at the water.
+  function steerPlayer(dt, input) {
     const car = G.player.car;
     if (!car) return;
     const fwd = input.forward ? 1 : input.back ? -1 : 0;
@@ -299,19 +300,17 @@ export function createVehicles(G) {
     car.angle += steerAmount * (input.handbrake ? 1.6 : 1);
     car.pos.x += Math.cos(car.angle) * car.speed * dt;
     car.pos.z += -Math.sin(car.angle) * car.speed * dt;
-    // Building collision: bounce off and take damage at speed.
     const beforeX = car.pos.x;
     const beforeZ = car.pos.z;
     G.cityCollide(car.pos, 2.2);
     if (beforeX !== car.pos.x || beforeZ !== car.pos.z) {
       if (Math.abs(car.speed) > 6) {
-        damageCar(car, Math.abs(car.speed) * 0.5, 'wall');
+        hurtCar(car, Math.abs(car.speed) * 0.5, 'wall');
         G.effects.sparks(car.pos.x, 0.8, car.pos.z);
         G.audio.punch();
       }
       car.speed *= 0.35;
     }
-    // Sand slows the car; the water stops it.
     if (car.pos.x > 196) car.speed *= (1 - 0.8 * dt);
     if (car.pos.x > 232) {
       car.pos.x = 232;
@@ -329,20 +328,20 @@ export function createVehicles(G) {
   return {
     cars,
     traffic,
-    makeCar,
-    spawnParked,
-    spawnTrafficCar,
-    removeCar,
-    nearestCar,
-    damageCar,
-    explodeCar,
-    updateTraffic,
-    drivePlayer,
+    makeCar: assembleCar,
+    spawnParked: parkRow,
+    spawnTrafficCar: addTrafficCar,
+    removeCar: dropCar,
+    nearestCar: closestCar,
+    damageCar: hurtCar,
+    explodeCar: blowUpCar,
+    updateTraffic: moveTraffic,
+    drivePlayer: steerPlayer,
   };
 }
 
-// A small smoke emitter that rides on a damaged car.
-class SmokePuff {
+// A small smoke emitter that rides on a damaged car until it is gone.
+class SmokeTrail {
   constructor(scene) {
     this.scene = scene;
     this.parts = [];

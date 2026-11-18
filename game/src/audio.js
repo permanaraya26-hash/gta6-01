@@ -89,8 +89,8 @@ export function createAudio() {
       osc.frequency.exponentialRampToValueAtTime(slideTo, ctx.currentTime + dur);
     }
     const gain = ctx.createGain();
-    gain.setValueAtTime(vol, ctx.currentTime);
-    gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
     osc.connect(gain);
     gain.connect(master);
     osc.start();
