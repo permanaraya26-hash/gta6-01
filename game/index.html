@@ -11,21 +11,21 @@
   canvas.webgl { display: block; width: 100%; height: 100%; }
   #hud { position: absolute; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); user-select: none; }
   .panel { background: rgba(8, 18, 32, .55); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 8px 12px; }
+  #objective { position: absolute; left: 14px; top: 12px; max-width: 340px; font-size: 15px; line-height: 1.35; }
+  #objective .obj-title { font-weight: 800; color: #ffd23e; font-size: 16px; }
+  #objective .obj-dist { color: #9be7ff; font-weight: 700; }
+  #clock { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 700; }
   #cash { position: absolute; top: 12px; right: 14px; font-size: 26px; font-weight: 800; color: #7dff9a; letter-spacing: .5px; }
   #wanted { position: absolute; top: 52px; right: 14px; font-size: 26px; letter-spacing: 4px; color: #ffd23e; }
   #wanted.hot { animation: flash .5s steps(2) infinite; color: #ff4d4d; }
   @keyframes flash { 50% { opacity: .35; } }
-  #clock { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 700; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; border: 2px solid rgba(255,255,255,.45); border-radius: 50%; background: rgba(6, 20, 36, .8); box-shadow: 0 2px 12px rgba(0,0,0,.5); }
   #healthwrap { position: absolute; right: 14px; bottom: 14px; width: 240px; }
   #healthwrap .label { font-size: 12px; letter-spacing: 2px; opacity: .9; }
   #healthbar { height: 14px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 7px; overflow: hidden; margin-top: 3px; }
   #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5f2c0); }
   #carbar { height: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 5px; overflow: hidden; margin-top: 4px; }
   #carfill { height: 100%; width: 100%; background: linear-gradient(90deg,#ff9a3d,#ffd23e); }
-  #objective { position: absolute; left: 14px; top: 12px; max-width: 340px; font-size: 15px; line-height: 1.35; }
-  #objective .obj-title { font-weight: 800; color: #ffd23e; font-size: 16px; }
-  #objective .obj-dist { color: #9be7ff; font-weight: 700; }
-  #minimap { position: absolute; left: 14px; bottom: 14px; border: 2px solid rgba(255,255,255,.45); border-radius: 50%; background: rgba(6, 20, 36, .8); box-shadow: 0 2px 12px rgba(0,0,0,.5); }
   #speedo { position: absolute; right: 14px; bottom: 108px; font-size: 30px; font-weight: 800; text-align: right; }
   #speedo small { font-size: 13px; font-weight: 600; opacity: .85; }
   #ammo { position: absolute; right: 14px; bottom: 168px; font-size: 18px; font-weight: 700; text-align: right; }
@@ -57,9 +57,9 @@
   <div id="cash">$0</div>
   <div id="wanted"></div>
   <div id="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas></div>
+  <div id="healthwrap"><div class="label">RICO &nbsp;·&nbsp; HEALTH</div><div id="healthbar"><div id="healthfill"></div></div><div id="carbar" class="hidden"><div id="carfill"></div></div></div>
   <div id="speedo" class="hidden">0 <small>MPH</small></div>
   <div id="ammo" class="hidden">PISTOL &nbsp;12 / &infin;</div>
-  <div id="healthwrap"><div class="label">RICO &nbsp;·&nbsp; HEALTH</div><div id="healthbar"><div id="healthfill"></div></div><div id="carbar" class="hidden"><div id="carfill"></div></div></div>
   <div id="crosshair">+</div>
   <div id="toast"></div>
   <div id="subtoast"></div>

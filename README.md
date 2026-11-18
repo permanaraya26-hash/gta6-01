@@ -99,6 +99,30 @@ the builders' sessions).
   errors). Later stages rewrite the remaining source files and re-take the
   screenshots.
 
+- **Stage 2 (recording 01a1ec92, final rewrite stage):** all ten remaining
+  source files were rewritten in a new structure with the same systems and
+  tuning — `game/src/util.js` (seeded RNG, math helpers, procedural
+  textures), `game/src/save.js` (localStorage save/load), `game/src/audio.js`
+  (synthesized WebAudio: engine, sirens, gunshots, jingles),
+  `game/src/people.js` (Rico's on-foot movement and the pedestrians who
+  stroll, flee and get knocked down), `game/src/combat.js` (pistol hitscan
+  with tracers, muzzle flash and reload, punches, particles),
+  `game/src/missions.js` (Vera's four-job story: The Fixer, Hot Wheels,
+  Pier Drops, Heat Wave, plus respawning cash drops),
+  `game/src/hud.js` (HUD, objective, wanted stars, clock, live minimap,
+  menus), `game/src/shots.js` (the four staged screenshot scenes),
+  `game/index.html` (DOM, import map, module script) and `main.ts` (the
+  entry program: copies game/ + screenshots/ and writes a deterministic
+  dossier.json). All eight JS modules pass `node --check`, the entry
+  program builds a deterministic dossier (590,800 bytes), and a
+  headless-Chromium smoke test loads all four screenshot scenes with the
+  WebGL canvas, HUD and menus mounted and zero JS errors. The four
+  screenshots were re-taken as fresh renders of the rewritten code
+  (1-cover: 3-star police chase at 58 mph, 2-foot: Rico on foot,
+  3-mission: Pier 7 package pickup, 4-start: title screen), each
+  1280×800 JPEG under 256 KiB. With stage 1, the whole entry is now
+  rewritten under two sealed short recordings and ready to submit.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
