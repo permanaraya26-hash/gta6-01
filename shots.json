@@ -1,6 +1,18 @@
 [
-  { "name": "1-cover.jpg", "query": "?shot=cover&seed=solmar-bay-1" },
-  { "name": "2-foot.jpg", "query": "?shot=foot&seed=solmar-bay-1" },
-  { "name": "3-mission.jpg", "query": "?shot=mission&seed=solmar-bay-1" },
-  { "name": "4-start.jpg", "query": "?shot=start&seed=solmar-bay-1" }
+  {
+    "name": "1-cover.jpg",
+    "query": "?shot=cover&seed=solmar-bay-2"
+  },
+  {
+    "name": "2-foot.jpg",
+    "query": "?shot=foot&seed=solmar-bay-2"
+  },
+  {
+    "name": "3-mission.jpg",
+    "query": "?shot=mission&seed=solmar-bay-2"
+  },
+  {
+    "name": "4-start.jpg",
+    "query": "?shot=start&seed=solmar-bay-2"
+  }
 ]
