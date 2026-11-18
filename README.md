@@ -143,6 +143,25 @@ the builders' sessions).
   non-localhost requests. Entry size 4,946,348 bytes in all
   (game/ 2,243,152 bytes), well inside the caps.
 
+- **Stage 5 (recording 01a1ecde, from-scratch rewrite, fast):** stage 4
+  had already rewritten `game/src/city.js` and `game/src/vehicles.js`
+  from scratch, but its recording died before sealing (its only usage
+  row landed 660 s after the last witnessed record, just outside the
+  600 s slack), so the rewrite was redone under this fresh short
+  recording without ever opening the old files: `game/src/city.js`
+  (347 lines) and `game/src/vehicles.js` (409 lines), 756 lines in
+  all, written from the game spec — a 7×7 road grid with ~70
+  procedural buildings, a park with a pond, a beach, a boardwalk and
+  Pier 7 reaching east to x = 320, plus 8 named cars, arcade driving
+  (top speed 42, reverse 12, handbrake, wall-bounce damage, sand drag)
+  and road-following traffic that brakes for cars and pedestrians.
+  The same pass confirmed the pier corridor is drivable and the
+  mission anchors (safehouse, spawn, Vera, garage, pier) are clear.
+  Verified by a headless-Chromium drive check: new game starts, the
+  player steals a parked car, drives it (speed 11 and climbing), the
+  wanted level rises, and the run reports zero JS errors. Screenshots
+  are stage 2's fresh renders and were not retaken.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
