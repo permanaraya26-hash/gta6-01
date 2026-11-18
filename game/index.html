@@ -3,17 +3,107 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23ffd23e'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle'%3E🌴%3C/text%3E%3C/svg%3E">
+<title>Solmar Bay — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1626; font-family: "Segoe UI", Verdana, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas.webgl { display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); user-select: none; }
+  .panel { background: rgba(8, 18, 32, .55); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 8px 12px; }
+  #cash { position: absolute; top: 12px; right: 14px; font-size: 26px; font-weight: 800; color: #7dff9a; letter-spacing: .5px; }
+  #wanted { position: absolute; top: 52px; right: 14px; font-size: 26px; letter-spacing: 4px; color: #ffd23e; }
+  #wanted.hot { animation: flash .5s steps(2) infinite; color: #ff4d4d; }
+  @keyframes flash { 50% { opacity: .35; } }
+  #clock { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 700; }
+  #healthwrap { position: absolute; right: 14px; bottom: 14px; width: 240px; }
+  #healthwrap .label { font-size: 12px; letter-spacing: 2px; opacity: .9; }
+  #healthbar { height: 14px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 7px; overflow: hidden; margin-top: 3px; }
+  #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5f2c0); }
+  #carbar { height: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  #carfill { height: 100%; width: 100%; background: linear-gradient(90deg,#ff9a3d,#ffd23e); }
+  #objective { position: absolute; left: 14px; top: 12px; max-width: 340px; font-size: 15px; line-height: 1.35; }
+  #objective .obj-title { font-weight: 800; color: #ffd23e; font-size: 16px; }
+  #objective .obj-dist { color: #9be7ff; font-weight: 700; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; border: 2px solid rgba(255,255,255,.45); border-radius: 50%; background: rgba(6, 20, 36, .8); box-shadow: 0 2px 12px rgba(0,0,0,.5); }
+  #speedo { position: absolute; right: 14px; bottom: 108px; font-size: 30px; font-weight: 800; text-align: right; }
+  #speedo small { font-size: 13px; font-weight: 600; opacity: .85; }
+  #ammo { position: absolute; right: 14px; bottom: 168px; font-size: 18px; font-weight: 700; text-align: right; }
+  #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 22px; color: rgba(255,255,255,.9); display: none; }
+  #toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 26px; font-weight: 800; color: #ffd23e; text-align: center; display: none; }
+  #subtoast { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); font-size: 16px; color: #fff; text-align: center; display: none; }
+  #hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font-size: 13px; opacity: .85; background: rgba(0,0,0,.45); padding: 5px 10px; border-radius: 8px; }
+  #vignette { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px rgba(120,0,0,.0); transition: box-shadow .3s; }
+  #vignette.hurt { box-shadow: inset 0 0 140px rgba(200,0,0,.55); }
+  .menu { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(4,12,24,.25) 0%, rgba(4,12,24,.78) 70%); color: #fff; text-align: center; pointer-events: auto; }
+  .menu h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd23e; text-shadow: 0 4px 0 #b3541e, 0 8px 24px rgba(0,0,0,.7); }
+  .menu h2 { font-size: 20px; margin: 4px 0 22px; font-weight: 600; color: #bfe9ff; letter-spacing: 3px; }
+  .menu .tag { font-size: 14px; opacity: .85; margin-bottom: 26px; max-width: 560px; line-height: 1.5; }
+  .menu button { display: block; width: 280px; margin: 7px auto; padding: 13px; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(180deg,#2b6cb0,#1a4a7a); border: 1px solid rgba(255,255,255,.4); border-radius: 10px; cursor: pointer; }
+  .menu button:hover { background: linear-gradient(180deg,#3b82c4,#2563a0); }
+  .menu button.primary { background: linear-gradient(180deg,#e8a020,#b97a08); }
+  .menu button.primary:hover { background: linear-gradient(180deg,#f5b73a,#d18f0e); }
+  .menu .keys { margin-top: 22px; font-size: 13px; line-height: 1.8; opacity: .9; }
+  .menu .keys b { color: #ffd23e; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<div id="app"></div>
+<div id="hud" class="hidden">
+  <div id="objective" class="panel"><div class="obj-title" id="obj-title">Solmar Bay</div><div id="obj-text">Meet Vera at the pier.</div><div class="obj-dist" id="obj-dist"></div></div>
+  <div id="clock" class="panel">08:00</div>
+  <div id="cash">$0</div>
+  <div id="wanted"></div>
+  <div id="minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas></div>
+  <div id="speedo" class="hidden">0 <small>MPH</small></div>
+  <div id="ammo" class="hidden">PISTOL &nbsp;12 / &infin;</div>
+  <div id="healthwrap"><div class="label">RICO &nbsp;·&nbsp; HEALTH</div><div id="healthbar"><div id="healthfill"></div></div><div id="carbar" class="hidden"><div id="carfill"></div></div></div>
+  <div id="crosshair">+</div>
+  <div id="toast"></div>
+  <div id="subtoast"></div>
+  <div id="hint">WASD move · SHIFT run · SPACE jump · E enter/exit car · CLICK shoot · F punch · R reload · P pause</div>
+  <div id="vignette"></div>
+</div>
+
+<div id="menu-start" class="menu">
+  <h1>SOLMAR BAY</h1>
+  <h2>AN OPEN-WORLD CRIME GAME</h2>
+  <div class="tag">Sun, sea and trouble. Rico Vega is back in Solmar Bay — a coastal city run by
+  fixers, cops and fast cars. Work for Vera Cruz, steal what you need, and stay one step
+  ahead of the SBPD. An original game: no real city, no real people, no borrowed anything.</div>
+  <button id="btn-new" class="primary">▶ &nbsp;New Game</button>
+  <button id="btn-continue">Continue</button>
+  <button id="btn-how">How to Play</button>
+  <div class="keys" id="howto" style="display:none">
+    <b>W A S D</b> move &nbsp;·&nbsp; <b>Mouse drag</b> camera &nbsp;·&nbsp; <b>SHIFT</b> run &nbsp;·&nbsp; <b>SPACE</b> jump<br>
+    <b>E</b> steal / enter car &nbsp;·&nbsp; <b>CLICK</b> shoot &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>R</b> reload<br>
+    In a car: <b>W/S</b> drive &nbsp;·&nbsp; <b>A/D</b> steer &nbsp;·&nbsp; <b>SPACE</b> handbrake &nbsp;·&nbsp; <b>P</b> pause<br>
+    Crimes raise your wanted stars. Lose the cops, or get BUSTED — and pay the price.
+  </div>
+</div>
+
+<div id="menu-pause" class="menu hidden">
+  <h1 style="font-size:44px">PAUSED</h1>
+  <h2>SOLMAR BAY</h2>
+  <button id="btn-resume" class="primary">Resume</button>
+  <button id="btn-save">Save Game</button>
+  <button id="btn-restart">Restart Story</button>
+  <button id="btn-quit">Quit to Title</button>
+  <div class="keys" id="pause-info"></div>
+</div>
+
+<div id="menu-end" class="menu hidden">
+  <h1 id="end-title" style="font-size:52px">BUSTED</h1>
+  <h2 id="end-sub">The SBPD caught up with you.</h2>
+  <button id="btn-respawn" class="primary">Wake up at the Safehouse</button>
+</div>
+
 <p id="status" role="status" aria-live="polite"></p>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -1,79 +1,84 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// Staged screenshot scenes for Solmar Bay. ?shot=cover|foot|mission|start
+// sets up a real, playable game state — the screenshots are renders of the
+// game itself, not composites.
+export function applyShot(G, name) {
+  const P = G.player;
+  const setCam = (x, y, z, lookX, lookY, lookZ) => {
+    G.camYaw = Math.atan2(-(lookX - x), -(lookZ - z));
+    G.camPitch = 0.32;
+    G.camDist = Math.hypot(x - P.pos.x, z - P.pos.z) || 12;
+    G.camPos.set(x, y, z);
+    G.camLook.set(lookX, lookY, lookZ);
+  };
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
+  if (name === 'start') {
+    G.state.mode = 'menu';
+    G.hud.showMenu('start');
+    G.shotOrbit = true;
+    return 'start';
+  }
 
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
-  }
-  return Infinity;
-}
+  // all gameplay shots: HUD on, menus off, playing state
+  G.state.mode = 'playing';
+  G.hud.showMenu('playing');
+  G.audio.setMuted(true);
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+  if (name === 'cover') {
+    // police chase: Rico driving a red Comet GT at speed, 3 stars, SBPD on his tail
+    const car = G.vehicles.makeCar(52, 0, 0, { name: 'Comet GT', color: 0xd23b2e });
+    G.player.car = car;
+    car.isPlayer = true;
+    car.speed = 30;
+    P.mesh.group.visible = false;
+    G.state.wanted = 3;
+    G.state.cash = 4820;
+    G.state.health = 82;
+    G.state.clockMinutes = 17 * 60 + 24;
+    G.missions.startMission(3);
+    const u1 = G.police.spawnUnit();
+    u1.pos.set(30, 0, 2); u1.angle = 0; u1.speed = 28;
+    const u2 = G.police.spawnUnit();
+    u2.pos.set(88, 0, -3); u2.angle = Math.PI; u2.speed = 24;
+    G.vehicles.spawnTrafficCar();
+    setCam(52 - 14, 7, 12, 52, 1.5, 0);
+    G.camDist = 15;
+    return 'cover';
   }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
-  }
-  return best;
-}
 
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+  if (name === 'foot') {
+    P.pos.set(-70, 0, -60);
+    P.angle = Math.PI * 0.75;
+    G.state.cash = 1250;
+    G.state.clockMinutes = 9 * 60 + 40;
+    G.missions.startMission(1);
+    const ped = G.peds.list[0];
+    ped.pos.set(-64, 0, -58);
+    const car = G.vehicles.makeCar(-52, -40, 0, { name: 'Palm Runner', color: 0xe8c832 });
+    car.speed = 0;
+    setCam(-70 - 9, 5, -60 + 9, -70, 1.5, -60);
+    G.camDist = 13;
+    return 'foot';
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
+
+  if (name === 'mission') {
+    // Mission 2: package pickup on Pier 7, police in the distance
+    G.state.missionIndex = 2;
+    G.missions.startMission(2);
+    P.pos.set(246, 0, 9);
+    P.angle = -Math.PI / 2 - 0.35;
+    G.state.cash = 3120;
+    G.state.wanted = 1;
+    G.state.clockMinutes = 15 * 60 + 5;
+    const u = G.police.spawnUnit();
+    u.pos.set(190, 0, 24); u.angle = Math.PI / 2; u.speed = 12;
+    // camera on the boardwalk, looking east along the pier: package + beam + ocean
+    G.camYaw = Math.atan2(-(262 - 236), -(0 - 16));
+    G.camPitch = 0.3;
+    G.camDist = 15;
+    G.camPos.set(236, 6, 16);
+    G.camLook.set(262, 1, 0);
+    return 'mission';
   }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+
+  return null;
 }
